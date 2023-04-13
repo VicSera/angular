@@ -7,7 +7,7 @@
  */
 
 import {fakeAsync, tick} from '@angular/core/testing';
-import {AsyncValidatorFn, FormArray, FormControl, FormGroup, Validators} from '@angular/forms';
+import {AsyncValidatorFn, FormArray, FormControl, FormGroup, ValidationErrors, Validators} from '@angular/forms';
 
 import {asyncValidator, asyncValidatorReturningObservable} from './util';
 
@@ -1151,6 +1151,31 @@ describe('FormControl', () => {
        }));
   });
 
+  describe('errorChanges', () => {
+    it('should fire an event after an error appears', done => {
+      const c = new FormControl('someValue', Validators.required);
+
+      c.errorChanges.subscribe((errors) => {
+        expect(errors).toBe({required: true});
+        done();
+      });
+
+      c.setValue('');
+    });
+
+    it('should not fire the same event twice', () => {
+      let eventCount = 0;
+      const c = new FormControl(0, Validators.max(1));
+      c.errorChanges.subscribe(() => eventCount += 1);
+
+      c.setValue(2);
+      expect(eventCount).toEqual(1);
+
+      c.setValue(3);
+      expect(eventCount).toEqual(1);
+    });
+  });
+
   describe('setErrors', () => {
     it('should set errors on a control', () => {
       const c = new FormControl('someValue');
@@ -1202,6 +1227,36 @@ describe('FormControl', () => {
 
       expect(c.errors).toEqual(null);
       expect(g.errors).toEqual(null);
+    });
+
+    it('should emit a new errorChanges value', () => {
+      const cErrorLog: (ValidationErrors|null)[] = [];
+      const gErrorLog: (ValidationErrors|null)[] = [];
+      const c = new FormControl('oldValue');
+      const g = new FormGroup({'one': c});
+      c.errorChanges.subscribe((error) => cErrorLog.push(error));
+      g.errorChanges.subscribe((error) => gErrorLog.push(error));
+
+      g.setErrors({'someGroupError': true});
+      c.setErrors({'someError': true});
+
+      expect(cErrorLog).toBe([{'someError': true}]);
+      expect(gErrorLog).toBe([{'someGroupError': true}]);
+
+      c.setValue('newValue');
+
+      expect(cErrorLog).toBe([{'someError': true}, null]);
+      expect(gErrorLog).toBe([{'someGroupError': true}, null]);
+    });
+
+    it('should not emit a new errorChanges value for parent', () => {
+      const c = new FormControl('someValue');
+      const g = new FormGroup({'one': c});
+
+      g.errorChanges.subscribe(() => fail('Parent errorChanges emitted'));
+
+      g.setErrors({'someGroupError': true});
+      c.setErrors({'someError': true});
     });
   });
 
@@ -1473,6 +1528,21 @@ describe('FormControl', () => {
            tick();
            expect(c.errors).toEqual({'async': true});
          }));
+
+      it('should emit errorChanges value when enabled/disabled', () => {
+        let errorLog: (ValidationErrors|null)[] = [];
+        const c = new FormControl('not empty', Validators.required);
+        c.errorChanges.subscribe((error: ValidationErrors|null) => errorLog.push(error));
+
+        c.setValue('');
+        expect(errorLog).toEqual([{required: true}]);
+
+        c.disable();
+        expect(errorLog).toEqual([{required: true}, null]);
+
+        c.enable();
+        expect(errorLog).toEqual([{required: true}, null, {required: true}]);
+      });
     });
 
     describe('disabled events', () => {
@@ -1529,6 +1599,16 @@ describe('FormControl', () => {
       it('should not emit status change events when emitEvent = false', () => {
         c.statusChanges.subscribe(() => logger.push('control'));
         g.statusChanges.subscribe(() => logger.push('form'));
+
+        c.disable({emitEvent: false});
+        expect(logger).toEqual([]);
+        c.enable({emitEvent: false});
+        expect(logger).toEqual([]);
+      });
+
+      it('should not emit error change events when emitEvent = false', () => {
+        c.errorChanges.subscribe(() => logger.push('control'));
+        g.errorChanges.subscribe(() => logger.push('form'));
 
         c.disable({emitEvent: false});
         expect(logger).toEqual([]);

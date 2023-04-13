@@ -8,6 +8,7 @@
 
 import {EventEmitter, ɵRuntimeError as RuntimeError} from '@angular/core';
 import {Observable} from 'rxjs';
+import {distinctUntilChanged, mapTo} from 'rxjs/operators';
 
 import {asyncValidatorsDroppedWithOptsWarning, missingControlError, missingControlValueError, noControlsError} from '../directives/reactive_errors';
 import {AsyncValidatorFn, ValidationErrors, ValidatorFn} from '../directives/validators';
@@ -598,6 +599,23 @@ export abstract class AbstractControl<TValue = any, TRawValue extends TValue = T
    *
    */
   public readonly statusChanges!: Observable<FormControlStatus>;
+
+  public get errorChanges(): Observable<ValidationErrors|null> {
+    return this.valueChanges.pipe(
+        mapTo(this.errors), distinctUntilChanged((previousErrorState, currentErrorState) => {
+          const previousErrors = Object.getOwnPropertyNames(previousErrorState || {});
+          const currentErrors = Object.getOwnPropertyNames(currentErrorState || {});
+          const combinedErrors = new Set([...previousErrors, ...currentErrors]);
+
+          for (const error of combinedErrors) {
+            if (previousErrors[error] !== currentErrors[error]) {
+              return true;
+            }
+          }
+
+          return false;
+        }));
+  }
 
   /**
    * Reports the update strategy of the `AbstractControl` (meaning
